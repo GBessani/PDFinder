@@ -7,7 +7,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys'
 import { Boom } from '@hapi/boom'
-import qrcode from 'qrcode-terminal'
+import QRCode from 'qrcode'
 import pino from 'pino'
 
 const PORT = process.env.PORT || 3001
@@ -16,6 +16,7 @@ const AUTH_DIR = process.env.AUTH_DIR || 'auth_info' // aponte pro volume persis
 
 let sock
 let isReady = false
+let lastQR = null
 
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
@@ -37,12 +38,13 @@ async function startSock() {
     const { connection, lastDisconnect, qr } = update
 
     if (qr) {
-      console.log('\n📱 Escaneie o QR abaixo no WhatsApp (Aparelhos conectados):\n')
-      qrcode.generate(qr, { small: true })
+      lastQR = qr
+      console.log(`📱 QR atualizado — abra no navegador: http://localhost:${PORT}/qr`)
     }
 
     if (connection === 'open') {
       isReady = true
+      lastQR = null
       console.log('✅ Conectado ao WhatsApp')
     }
 
@@ -61,7 +63,7 @@ async function startSock() {
   })
 }
 
-// transforma "44 99999-9999" / "+5544999999999" em JID do WhatsApp
+// transforma "44 99999-9999" / "+5544999999999" em só dígitos
 function toDigits(phone) {
   return String(phone).replace(/\D/g, '')
 }
@@ -72,6 +74,53 @@ app.use(express.json())
 // healthcheck sem token (pro Railway/Render monitorarem)
 app.get('/status', (req, res) => {
   res.json({ connected: isReady })
+})
+
+// QR como imagem PNG (nítida, fácil de escanear)
+app.get('/qr.png', async (req, res) => {
+  if (!lastQR) return res.status(404).end()
+  try {
+    const buf = await QRCode.toBuffer(lastQR, { width: 320, margin: 2 })
+    res.type('png').send(buf)
+  } catch {
+    res.status(500).end()
+  }
+})
+
+// página pra parear o WhatsApp pelo navegador
+app.get('/qr', (req, res) => {
+  res.send(`<!doctype html>
+<html lang="pt-br"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Conectar WhatsApp — PDFinder</title>
+<style>
+  body{font-family:system-ui,sans-serif;text-align:center;padding:40px 16px;color:#1a1a1a}
+  img{width:320px;height:320px;border:1px solid #eee;border-radius:12px}
+  .ok{color:#16a34a}
+  .muted{color:#888;font-size:14px}
+</style></head>
+<body>
+  <h2 id="title">Escaneie no WhatsApp</h2>
+  <p class="muted">Aparelhos conectados &rarr; Conectar um aparelho</p>
+  <div id="box"><img id="qr" src="/qr.png" alt="QR code"></div>
+  <p class="muted">O codigo atualiza sozinho. Mantenha esta aba aberta.</p>
+<script>
+  async function tick(){
+    try{
+      const s = await fetch('/status').then(r=>r.json())
+      if(s.connected){
+        document.getElementById('title').innerHTML = '<span class="ok">WhatsApp conectado!</span>'
+        document.getElementById('box').innerHTML = '<p>Pode fechar esta aba.</p>'
+        return
+      }
+    }catch(e){}
+    var img = document.getElementById('qr')
+    if(img) img.src = '/qr.png?t=' + Date.now()
+    setTimeout(tick, 8000)
+  }
+  tick()
+</script>
+</body></html>`)
 })
 
 // auth simples por header
@@ -92,7 +141,6 @@ app.post('/send', requireAuth, async (req, res) => {
 
   try {
     const digits = toDigits(phone)
-    // confirma que o número tem WhatsApp e pega o JID correto
     const [info] = await sock.onWhatsApp(`${digits}@s.whatsapp.net`)
     if (!info?.exists) {
       return res.status(404).json({ error: 'número não tem WhatsApp', phone })
@@ -108,5 +156,6 @@ app.post('/send', requireAuth, async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Worker WhatsApp na porta ${PORT}`)
+  console.log(`   Para conectar, abra no navegador: http://localhost:${PORT}/qr`)
   startSock()
 })
