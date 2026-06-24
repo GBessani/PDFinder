@@ -4,6 +4,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
   Browsers,
+  fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys'
 import { Boom } from '@hapi/boom'
 import qrcode from 'qrcode-terminal'
@@ -19,7 +20,12 @@ let isReady = false
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
 
+  // busca a versão atual do WhatsApp Web — evita o erro 405 por protocolo defasado
+  const { version, isLatest } = await fetchLatestBaileysVersion()
+  console.log(`Usando WhatsApp Web v${version.join('.')} (mais recente: ${isLatest})`)
+
   sock = makeWASocket({
+    version,
     auth: state,
     browser: Browsers.ubuntu('ListaDesejos'),
     logger: pino({ level: 'silent' }),
@@ -48,8 +54,8 @@ async function startSock() {
       if (deslogado) {
         console.log(`Sessão encerrada. Apague a pasta "${AUTH_DIR}" e reinicie pra gerar novo QR.`)
       } else {
-        console.log('Reconectando...')
-        startSock()
+        console.log('Reconectando em 5s...')
+        setTimeout(startSock, 5000)
       }
     }
   })
