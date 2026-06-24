@@ -1,0 +1,35 @@
+# === PDFinder — .gitignore da raiz do monorepo ===
+
+# Dependencias
+node_modules/
+**/node_modules/
+
+# Build / cache do Next
+.next/
+**/.next/
+dist/
+build/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Variaveis de ambiente (SEGREDOS) — mas mantem os exemplos
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# WhatsApp / Baileys — credenciais da sessao, NUNCA versionar
+**/auth_info/
+*.auth
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Sistema operacional / editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
