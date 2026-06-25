@@ -2,76 +2,79 @@
 
 import { useState } from "react";
 
-export type ContatoMatch = {
-  id: string;
+export type ContatoConsolidado = {
+  contatoId: string;
   nome: string;
   telefone: string;
+  produtoIds: string[];
+  produtoNomes: string[];
+  books: { path: string; fileName: string }[];
 };
 
-export type ProdutoMatch = {
-  produto: { id: string; nome: string };
-  contatos: ContatoMatch[];
-};
-
-export type ResultadoImport = {
-  fileName: string;
-  path: string;
+export type Consolidado = {
+  contatos: ContatoConsolidado[];
+  totalArquivos: number;
   totalProdutos: number;
-  encontrados: ProdutoMatch[];
+  totalContatos: number;
+  totalBooks: number;
 };
 
-export function RevisaoMatch({ resultado }: { resultado: ResultadoImport }) {
-  const { encontrados } = resultado;
-  const totalAvisos = encontrados.reduce((s, e) => s + e.contatos.length, 0);
-
+export function RevisaoMatch({ consolidado }: { consolidado: Consolidado }) {
   const [anexar, setAnexar] = useState(true);
   const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const [resumo, setResumo] = useState<{
-    enviados: number;
-    erros: number;
-    contatos: number;
-  } | null>(null);
+  const [progresso, setProgresso] = useState({ atual: 0, total: 0 });
+  const [resumo, setResumo] = useState<{ enviados: number; erros: number } | null>(
+    null
+  );
 
   async function disparar() {
     setEnviando(true);
-    setErro(null);
-    try {
-      const produtoIds = encontrados.map((e) => e.produto.id);
-      const resp = await fetch("/api/disparar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          produtoIds,
-          path: resultado.path,
-          fileName: resultado.fileName,
-          anexarBook: anexar,
-        }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setErro(data.error || "Falha ao enviar os avisos.");
-      } else {
-        setResumo(data);
+    setProgresso({ atual: 0, total: consolidado.contatos.length });
+    let enviados = 0;
+    let erros = 0;
+
+    for (let i = 0; i < consolidado.contatos.length; i++) {
+      setProgresso({ atual: i + 1, total: consolidado.contatos.length });
+      const c = consolidado.contatos[i];
+      try {
+        const resp = await fetch("/api/disparar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contatoId: c.contatoId,
+            produtoIds: c.produtoIds,
+            books: c.books,
+            anexarBook: anexar,
+          }),
+        });
+        const data = await resp.json();
+        if (data.status === "enviado") enviados++;
+        else if (data.status === "erro") erros++;
+      } catch {
+        erros++;
       }
-    } catch {
-      setErro("Erro de conexão ao enviar.");
-    } finally {
-      setEnviando(false);
+      // pausa entre contatos pra reduzir risco de bloqueio
+      if (i < consolidado.contatos.length - 1) {
+        await new Promise((r) => setTimeout(r, 2500 + Math.random() * 1500));
+      }
     }
+
+    setResumo({ enviados, erros });
+    setEnviando(false);
   }
 
-  if (encontrados.length === 0) {
+  if (consolidado.totalContatos === 0) {
     return (
       <div className="rounded-xl border border-dashed border-line p-10 text-center">
         <p className="text-sm text-muted">
-          Nenhum produto cadastrado foi identificado nesta nota.
+          Analisei {consolidado.totalArquivos}{" "}
+          {consolidado.totalArquivos === 1 ? "arquivo" : "arquivos"}, mas nenhum
+          contato com opt-in espera pelos produtos identificados.
         </p>
       </div>
     );
   }
 
-  // ja disparou: mostra o resumo
   if (resumo) {
     return (
       <div className="rounded-xl border border-line bg-surface p-8 text-center">
@@ -79,7 +82,7 @@ export function RevisaoMatch({ resultado }: { resultado: ResultadoImport }) {
           {resumo.enviados}
         </p>
         <p className="mt-1 text-sm text-muted">
-          {resumo.enviados === 1 ? "aviso enviado" : "avisos enviados"}
+          {resumo.enviados === 1 ? "cliente avisado" : "clientes avisados"}
           {resumo.erros > 0 && ` · ${resumo.erros} com falha`}
         </p>
         <p className="mt-4 text-xs text-muted">
@@ -92,87 +95,79 @@ export function RevisaoMatch({ resultado }: { resultado: ResultadoImport }) {
   return (
     <div>
       <div className="mb-5 flex flex-wrap gap-3">
-        <div className="rounded-xl border border-line bg-surface px-4 py-3">
-          <p className="font-display text-2xl font-semibold text-brand">
-            {encontrados.length}
-          </p>
-          <p className="text-xs text-muted">
-            {encontrados.length === 1
-              ? "produto identificado"
-              : "produtos identificados"}
-          </p>
-        </div>
-        <div className="rounded-xl border border-line bg-surface px-4 py-3">
-          <p className="font-display text-2xl font-semibold text-accent">
-            {totalAvisos}
-          </p>
-          <p className="text-xs text-muted">
-            {totalAvisos === 1 ? "aviso a enviar" : "avisos a enviar"}
-          </p>
-        </div>
+        <Stat valor={consolidado.totalArquivos} rotulo="arquivos lidos" />
+        <Stat valor={consolidado.totalProdutos} rotulo="produtos achados" cor="brand" />
+        <Stat valor={consolidado.totalContatos} rotulo="clientes a avisar" cor="accent" />
       </div>
 
-      <ul className="space-y-3">
-        {encontrados.map((e) => (
+      <ul className="space-y-2">
+        {consolidado.contatos.map((c) => (
           <li
-            key={e.produto.id}
-            className="overflow-hidden rounded-xl border border-line bg-surface"
+            key={c.contatoId}
+            className="rounded-xl border border-line bg-surface px-4 py-3"
           >
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <span className="text-sm font-medium">{e.produto.nome}</span>
-              <span className="rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-medium text-brand">
-                {e.contatos.length}{" "}
-                {e.contatos.length === 1 ? "contato" : "contatos"}
-              </span>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{c.nome}</p>
+                <p className="font-mono text-xs text-muted">+{c.telefone}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-medium text-brand">
+                  {c.produtoNomes.length}{" "}
+                  {c.produtoNomes.length === 1 ? "produto" : "produtos"}
+                </span>
+                <span className="text-xs text-muted">
+                  {c.books.length} {c.books.length === 1 ? "book" : "books"}
+                </span>
+              </div>
             </div>
-            {e.contatos.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-muted">
-                Ninguém com opt-in espera este produto.
-              </p>
-            ) : (
-              <ul className="divide-y divide-line">
-                {e.contatos.map((c) => (
-                  <li
-                    key={c.id}
-                    className="flex items-center justify-between px-4 py-2.5"
-                  >
-                    <span className="text-sm">{c.nome}</span>
-                    <span className="font-mono text-xs text-muted">
-                      +{c.telefone}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <p className="mt-1.5 truncate text-xs text-muted">
+              {c.produtoNomes.join(", ")}
+            </p>
           </li>
         ))}
       </ul>
 
-      {totalAvisos > 0 && (
-        <div className="mt-6 rounded-xl border border-line bg-surface p-4">
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={anexar}
-              onChange={(e) => setAnexar(e.target.checked)}
-              className="h-4 w-4 accent-[var(--color-accent)]"
-            />
-            Anexar o arquivo (book) junto com a mensagem
-          </label>
+      <div className="mt-6 rounded-xl border border-line bg-surface p-4">
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={anexar}
+            onChange={(e) => setAnexar(e.target.checked)}
+            className="h-4 w-4 accent-[var(--color-accent)]"
+          />
+          Anexar os arquivos (books) junto com a mensagem
+        </label>
 
-          {erro && <p className="mt-3 text-sm text-red-600">{erro}</p>}
+        <button
+          onClick={disparar}
+          disabled={enviando}
+          className="mt-4 w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
+        >
+          {enviando
+            ? `Enviando ${progresso.atual} de ${progresso.total}…`
+            : `Avisar ${consolidado.totalContatos} ${consolidado.totalContatos === 1 ? "cliente" : "clientes"} no WhatsApp`}
+        </button>
+      </div>
+    </div>
+  );
+}
 
-          <button
-            onClick={disparar}
-            disabled={enviando}
-            className="mt-4 w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
-          >
-            {enviando
-              ? "Enviando avisos…"
-              : `Enviar ${totalAvisos} ${totalAvisos === 1 ? "aviso" : "avisos"} no WhatsApp`}
-          </button>
-        </div>
-      )}
+function Stat({
+  valor,
+  rotulo,
+  cor = "ink",
+}: {
+  valor: number;
+  rotulo: string;
+  cor?: "ink" | "brand" | "accent";
+}) {
+  const corClasse =
+    cor === "brand" ? "text-brand" : cor === "accent" ? "text-accent" : "text-ink";
+  return (
+    <div className="rounded-xl border border-line bg-surface px-4 py-3">
+      <p className={`font-display text-2xl font-semibold ${corClasse}`}>{valor}</p>
+      <p className="text-xs text-muted">{rotulo}</p>
     </div>
   );
 }

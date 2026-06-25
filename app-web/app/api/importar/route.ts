@@ -15,19 +15,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
-  const form = await request.formData();
-  const file = form.get("file");
-  if (!(file instanceof File)) {
+  const { path, fileName } = await request.json();
+  if (!path || typeof path !== "string") {
+    return NextResponse.json({ error: "Arquivo não informado." }, { status: 400 });
+  }
+
+  // baixa o arquivo do Storage (RLS garante que é do proprio usuario)
+  const { data: blob, error: dlErr } = await supabase.storage
+    .from("notas")
+    .download(path);
+  if (dlErr || !blob) {
     return NextResponse.json(
-      { error: "Nenhum arquivo enviado." },
-      { status: 400 }
+      { error: "Não foi possível ler o arquivo." },
+      { status: 422 }
     );
   }
 
-  // 1. extrai o texto do PDF
+  // extrai o texto
   let texto = "";
   try {
-    texto = await extrairTextoPDF(await file.arrayBuffer());
+    texto = await extrairTextoPDF(await blob.arrayBuffer());
   } catch {
     return NextResponse.json(
       { error: "Não foi possível ler o PDF." },
@@ -41,7 +48,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // 2. produtos do usuario (RLS aplica)
+  // produtos do usuario
   const { data: produtos } = await supabase.from("produtos").select("id, nome");
   if (!produtos || produtos.length === 0) {
     return NextResponse.json(
@@ -50,7 +57,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // 3. identifica quais produtos aparecem no texto
+  // identifica os produtos no texto
   let idsEncontrados: string[] = [];
   try {
     idsEncontrados = await identificarProdutos(texto, produtos);
@@ -61,7 +68,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // 4. para cada produto encontrado, busca quem deseja (com opt-in)
+  // para cada produto, quem deseja (com opt-in)
   const encontrados = [];
   for (const id of idsEncontrados) {
     const produto = produtos.find((p) => p.id === id);
@@ -80,9 +87,9 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    fileName: file.name,
+    fileName: fileName ?? "material.pdf",
+    path,
     totalProdutos: produtos.length,
-    amostraTexto: texto.slice(0, 240),
     encontrados,
   });
 }
