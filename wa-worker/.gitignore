@@ -1,0 +1,30 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente (contém o AUTH_TOKEN)
+.env
+.env.local
+.env.*.local
+
+# Sessão do WhatsApp / Baileys — NUNCA versionar (credenciais da conta)
+auth_info/
+auth_info_*/
+*.auth
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Build / cache
+dist/
+build/
+.cache/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/

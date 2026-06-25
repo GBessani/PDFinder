@@ -154,6 +154,42 @@ app.post('/send', requireAuth, async (req, res) => {
   }
 })
 
+// envia um DOCUMENTO (PDF) com legenda. Baixa o arquivo a partir de fileUrl.
+app.post('/send-doc', requireAuth, async (req, res) => {
+  if (!isReady) return res.status(503).json({ error: 'whatsapp não conectado' })
+
+  const { phone, message, fileUrl, fileName } = req.body || {}
+  if (!phone || !fileUrl) {
+    return res.status(400).json({ error: 'phone e fileUrl são obrigatórios' })
+  }
+
+  try {
+    const digits = toDigits(phone)
+    const [info] = await sock.onWhatsApp(`${digits}@s.whatsapp.net`)
+    if (!info?.exists) {
+      return res.status(404).json({ error: 'número não tem WhatsApp', phone })
+    }
+
+    // baixa o PDF a partir da URL (ex.: signed URL do Supabase Storage)
+    const resp = await fetch(fileUrl)
+    if (!resp.ok) {
+      return res.status(502).json({ error: 'não foi possível baixar o arquivo' })
+    }
+    const buffer = Buffer.from(await resp.arrayBuffer())
+
+    await sock.sendMessage(info.jid, {
+      document: buffer,
+      mimetype: 'application/pdf',
+      fileName: fileName || 'documento.pdf',
+      caption: message || undefined,
+    })
+    res.json({ ok: true, jid: info.jid })
+  } catch (err) {
+    console.error('Erro ao enviar documento:', err)
+    res.status(500).json({ error: 'falha ao enviar documento' })
+  }
+})
+
 app.listen(PORT, () => {
   console.log(`🚀 Worker WhatsApp na porta ${PORT}`)
   console.log(`   Para conectar, abra no navegador: http://localhost:${PORT}/qr`)
