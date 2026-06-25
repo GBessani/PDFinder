@@ -9,7 +9,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type NotificacaoStatus = 'pendente' | 'enviado' | 'erro' | 'ignorado'
+export type NotificacaoStatus = "pendente" | "enviado" | "erro" | "ignorado"
 
 export type Database = {
   public: {
@@ -33,6 +33,7 @@ export type Database = {
           nome?: string
           created_at?: string
         }
+        Relationships: []
       }
       contatos: {
         Row: {
@@ -59,6 +60,7 @@ export type Database = {
           opt_in?: boolean
           created_at?: string
         }
+        Relationships: []
       }
       wishlist: {
         Row: {
@@ -82,6 +84,20 @@ export type Database = {
           produto_id?: string
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "wishlist_contato_id_fkey"
+            columns: ["contato_id"]
+            referencedRelation: "contatos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wishlist_produto_id_fkey"
+            columns: ["produto_id"]
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notificacoes: {
         Row: {
@@ -117,10 +133,25 @@ export type Database = {
           enviado_em?: string | null
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "notificacoes_contato_id_fkey"
+            columns: ["contato_id"]
+            referencedRelation: "contatos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notificacoes_produto_id_fkey"
+            columns: ["produto_id"]
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: { [_ in never]: never }
     Functions: { [_ in never]: never }
     Enums: { [_ in never]: never }
+    CompositeTypes: { [_ in never]: never }
   }
 }
