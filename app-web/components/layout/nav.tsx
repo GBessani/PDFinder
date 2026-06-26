@@ -10,6 +10,7 @@ const links = [
   { href: "/contatos", label: "Contatos" },
   { href: "/importar", label: "Importar" },
   { href: "/notificacoes", label: "Avisos" },
+  { href: "/conexao", label: "Conexão" },
 ];
 
 export function Nav() {
