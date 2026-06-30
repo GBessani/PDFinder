@@ -61,7 +61,8 @@ export async function POST(request: Request) {
   let idsEncontrados: string[] = [];
   try {
     idsEncontrados = await identificarProdutos(texto, produtos);
-  } catch {
+  } catch (e) {
+    console.error("[importar] erro no Groq:", e);
     return NextResponse.json(
       { error: "Falha ao analisar o conteúdo com a IA." },
       { status: 502 }
